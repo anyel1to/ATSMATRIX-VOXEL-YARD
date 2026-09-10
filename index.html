@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ATS MATRIX — Voxel Yard</title>
+<style>
+  html,body{margin:0;height:100%;background:#78A7FF;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#eee}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  #top{background:#000;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+  #top b{color:#50dc50}
+  #dbg{position:absolute;left:12px;top:64px;background:rgba(0,0,0,.72);padding:12px 14px;line-height:1.55;font-size:13px;min-width:240px}
+  #hint{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);background:#584020;color:#ffe8a8;border:3px solid #2a1c0c;padding:8px 16px;font-size:14px;text-align:center}
+  #bar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:4px;background:#000;padding:8px}
+  .slot{width:44px;height:44px;border:3px solid #9a9a9a}
+  .slot.on{border-color:#fff}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="top"><div><b>ATS MATRIX</b> / VOXEL YARD</div><div id="fps">— FPS</div></div>
+  <div id="dbg"></div>
+  <div id="hint">DRAG to orbit · SCROLL zoom · 1–6 select tower · SPACE pause</div>
+  <div id="bar"></div>
+</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.1/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const PAL = {
+  grass:[109,168,58], dirt:[134,96,67], stone:[145,145,145],
+  oak:[168,132,78], log:[110,86,54], leaf:[62,140,48],
+  water:[58,110,196], gold:[250,220,70], diamond:[92,220,214],
+  cyan:[34,190,210], redstone:[190,42,36], obsidian:[28,22,40],
+  iron:[210,210,216], emerald:[46,196,96], purple:[160,90,210],
+  pink:[232,120,170], amber:[240,170,48], sand:[220,208,148]
+};
+const mats = {};
+for (const [k,v] of Object.entries(PAL)) {
+  mats[k] = new THREE.MeshLambertMaterial({ color: (v[0]<<16)|(v[1]<<8)|v[2] });
+}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x78a7ff);
+scene.fog = new THREE.Fog(0x78a7ff, 28, 72);
+
+const cam = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
+cam.position.set(18, 14, 18);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 2, 0);
+
+scene.add(new THREE.AmbientLight(0xb0c8ff, 0.7));
+const sun = new THREE.DirectionalLight(0xfff0c8, 1.35);
+sun.position.set(20, 30, 12);
+sun.castShadow = true;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x88b0ff, 0x4a7a30, 0.35));
+
+const geo = new THREE.BoxGeometry(1, 1, 1);
+const world = new THREE.Group();
+scene.add(world);
+
+function cube(x,y,z, kind) {
+  const m = new THREE.Mesh(geo, mats[kind] || mats.stone);
+  m.position.set(x, y + 0.5, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  world.add(m);
+  return m;
+}
+
+const rng = (s => () => (s = s * 16807 % 2147483647) / 2147483647)(11);
+for (let x = -10; x <= 10; x++) {
+  for (let z = -10; z <= 10; z++) {
+    if (Math.abs(x) + Math.abs(z) > 16) continue;
+    if (Math.abs(x) === 0 && Math.abs(z) < 8) { cube(x,0,z,'water'); continue; }
+    if ((Math.abs(z) === 2 && Math.abs(x) < 8) || (Math.abs(x) === 2 && Math.abs(z) < 8)) {
+      cube(x,0,z,'stone'); continue;
+    }
+    cube(x,0,z,'grass');
+    if (rng() < 0.055 && Math.abs(x) > 3 && Math.abs(z) > 3) {
+      cube(x,1,z,'log'); cube(x,2,z,'log');
+      for (let dx=-1; dx<=1; dx++) for (let dz=-1; dz<=1; dz++) cube(x+dx,3,z+dz,'leaf');
+      cube(x,4,z,'leaf');
+    }
+  }
+}
+for (let x=-2;x<=2;x++) for (let z=-2;z<=2;z++) cube(x,1,z,'obsidian');
+cube(0,2,0,'gold'); cube(0,3,0,'diamond');
+
+const towers = [
+  {x:-5,z:-5,kind:'cyan',name:'NAV',h:11},
+  {x:5,z:-5,kind:'gold',name:'LIQ',h:9},
+  {x:5,z:5,kind:'emerald',name:'WR',h:7},
+  {x:-5,z:5,kind:'redstone',name:'RISK',h:6},
+  {x:0,z:8,kind:'diamond',name:'EDGE',h:8},
+  {x:0,z:-8,kind:'iron',name:'SIG',h:9},
+];
+const towerMeshes = towers.map(tw => {
+  const col = [];
+  for (let i=1;i<=tw.h;i++) col.push(cube(tw.x, i, tw.z, i===tw.h ? 'gold' : tw.kind));
+  return { ...tw, col };
+});
+
+const agentDef = [
+  {name:'NYX',kind:'cyan',spd:0.15},
+  {name:'VEX',kind:'amber',spd:0.22},
+  {name:'RIO',kind:'emerald',spd:0.18},
+  {name:'KAI',kind:'purple',spd:0.27},
+  {name:'ORA',kind:'pink',spd:0.20},
+  {name:'ZEN',kind:'redstone',spd:0.24},
+];
+const agents = agentDef.map((a,i) => {
+  const m = cube(0,1,2,a.kind);
+  return { ...a, m, i };
+});
+
+const bar = document.getElementById('bar');
+['cyan','gold','emerald','diamond','redstone','obsidian','oak','leaf','water'].forEach((k,i) => {
+  const s = document.createElement('div');
+  s.className = 'slot' + (i===0?' on':'');
+  const [r,g,b] = PAL[k];
+  s.style.background = `rgb(${r},${g},${b})`;
+  bar.appendChild(s);
+});
+
+let paused = false, t0 = performance.now(), acc = 0;
+let frames = 0, lastF = performance.now();
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { paused = !paused; e.preventDefault(); }
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 6) {
+    const tw = towers[n-1];
+    controls.target.set(tw.x, 4, tw.z);
+  }
+});
+addEventListener('resize', () => {
+  cam.aspect = innerWidth/innerHeight; cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const dbg = document.getElementById('dbg');
+const fpsEl = document.getElementById('fps');
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(0.05, (now - t0) / 1000);
+  t0 = now;
+  if (!paused) acc += dt;
+  const t = acc;
+  const k = 1 - Math.pow(1 - Math.min(1, t / 12), 3);
+
+  towerMeshes.forEach(tw => {
+    const live = 2 + Math.floor((tw.h-2) * k);
+    tw.col.forEach((m,i) => { m.visible = i < live; });
+  });
+  agents.forEach(a => {
+    const phase = (t * a.spd + a.i * 0.16) % 1;
+    if (a.i % 2 === 0) {
+      a.m.position.set(-7 + 14*phase, 1.5, 2);
+    } else {
+      a.m.position.set(2, 1.5, -7 + 14*((phase+0.3)%1));
+    }
+  });
+
+  controls.update();
+  renderer.render(scene, cam);
+
+  frames++;
+  if (now - lastF > 500) {
+    const fps = frames * 1000 / (now - lastF);
+    frames = 0; lastF = now;
+    fpsEl.textContent = fps.toFixed(0) + ' FPS';
+    const nav = 2140 + (16440-2140)*k;
+    dbg.innerHTML = [
+      `xyz ${cam.position.x.toFixed(1)} / ${cam.position.y.toFixed(1)} / ${cam.position.z.toFixed(1)}`,
+      `target ${controls.target.x.toFixed(1)} ${controls.target.z.toFixed(1)}`,
+      `NAV  $${nav.toFixed(0)}`,
+      `P&L  ${(nav-2000).toFixed(0)}`,
+      `EDGE ${(2.1+9.7*k).toFixed(1)}%`,
+      `NODES 6/6 alive`,
+      `SPACE pause · 1-6 jump tower`
+    ].join('<br>');
+  }
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
